@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extrator Multarquivos de Estoque</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background-color: #f0f3f5;
+            padding: 30px;
+            margin: 0;
+        }
+        .container {
+            max-width: 750px;
+            margin: 0 auto;
+            background: #ffffff;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        }
+        h2 {
+            color: #1e293b;
+            margin-top: 0;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+        .file-input-wrapper {
+            margin: 20px 0;
+        }
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            background: #f8fafc;
+            box-sizing: border-box;
+        }
+        .btn-extrair {
+            width: 100%;
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-bottom: 10px;
+        }
+        .btn-extrair:hover {
+            background-color: #1d4ed8;
+        }
+        .btn-extrair:disabled {
+            background-color: #94a3b8;
+            cursor: not-allowed;
+        }
+        .btn-copiar {
+            width: 100%;
+            background-color: #10b981;
+            color: white;
+            border: none;
+            padding: 10px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: 10px;
+            display: none;
+        }
+        .btn-copiar:hover {
+            background-color: #059669;
+        }
+        .resultado-container {
+            margin-top: 25px;
+        }
+        .resultado-box {
+            background: #0f172a;
+            color: #38bdf8;
+            padding: 20px;
+            border-radius: 6px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 15px;
+            white-space: pre-wrap;
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #1e293b;
+            line-height: 1.5;
+        }
+        .status-msg {
+            font-weight: bold;
+            color: #64748b;
+            margin-bottom: 5px;
+        }
+        .contador {
+            float: right;
+            color: #10b981;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Extrator de Estoque - Múltiplos PDFs</h2>
+    
+    <div class="file-input-wrapper">
+        <label class="status-msg" for="pdf-file">Selecione um ou mais PDFs dos Comprovantes:</label>
+        <input type="file" id="pdf-file" accept=".pdf" multiple>
+    </div>
+
+    <button id="btn-processar" class="btn-extrair" disabled>EXTRAIR TODOS OS ITENS JUNTOS</button>
+
+    <div class="resultado-container">
+        <div class="status-msg">
+            Texto Formatado para Envio:
+            <span id="qtd-itens" class="contador"></span>
+        </div>
+        <div id="resultado" class="resultado-box">Nenhum arquivo processado ainda.</div>
+        <button id="btn-copiar" class="btn-copiar">COPIAR TEXTO COMBINADO</button>
+    </div>
+</div>
+
+<script>
+    // Correção: Declarando a variável global corretamente
+    let arquivosCarregados = [];
+
+    document.getElementById('pdf-file').addEventListener('change', function(e) {
+        arquivosCarregados = Array.from(e.target.files);
+        const btn = document.getElementById('btn-processar');
+
+        if (arquivosCarregados.length > 0) {
+            btn.disabled = false;
+            document.getElementById('resultado').innerText = `${arquivosCarregados.length} arquivo(s) carregado(s). Clique em EXTRAIR.`;
+            document.getElementById('btn-copiar').style.display = 'none';
+        } else {
+            btn.disabled = true;
+            arquivosCarregados = [];
+        }
+    });
+
+    document.getElementById('btn-processar').addEventListener('click', async function() {
+        if (arquivosCarregados.length === 0) return;
+
+        const divResultado = document.getElementById('resultado');
+        const spanContador = document.getElementById('qtd-itens');
+
+        divResultado.innerText = "Processando PDFs...";
+        spanContador.innerText = "";
+
+        let todasAsLinhas = [];
+
+        for (let i = 0; i < arquivosCarregados.length; i++) {
+            const arquivo = arquivosCarregados[i];
+            divResultado.innerText = `Processando ${i + 1} de ${arquivosCarregados.length}: ${arquivo.name}`;
+
+            try {
+                const linhasArquivo = await processarArquivo(arquivo);
+                // Junta as linhas de TODOS os arquivos na mesma lista global
+                todasAsLinhas = todasAsLinhas.concat(linhasArquivo);
+            } catch (erro) {
+                console.error("Erro ao processar o arquivo: " + arquivo.name, erro);
+            }
+        }
+
+        // Processa todas as linhas acumuladas de todos os PDFs juntos
+        filtrarTodosProdutos(todasAsLinhas);
+    });
+
+    function processarArquivo(arquivo) {
+        return new Promise((resolve, reject) => {
+            const fileReader = new FileReader();
+
+            fileReader.onload = function() {
+                try {
+                    const arrayBuffer = fileReader.result;
+                    const decoder = new TextDecoder('latin1');
+                    const textoCru = decoder.decode(arrayBuffer);
+
+                    const regexTextos = /\(([^)]+)\)/g;
+                    let matchTextos;
+                    let linhasMontadas = [];
+                    let blocoBuffer = ""; // Resetado estritamente a cada novo arquivo carregado
+
+                    while ((matchTextos = regexTextos.exec(textoCru)) !== null) {
+                        let fragmento = matchTextos[1];
+
+                        if (fragmento.length > 1) {
+                            blocoBuffer += fragmento + " ";
+                        }
+
+                        if (fragmento.includes("1403") || fragmento.includes("60 50")) {
+                            linhasMontadas.push(blocoBuffer);
+                            blocoBuffer = "";
+                        }
+                    }
+
+                    if (blocoBuffer.trim()) {
+                        linhasMontadas.push(blocoBuffer);
+                    }
+
+                    resolve(linhasMontadas);
+                } catch (erro) {
+                    reject(erro);
+                }
+            };
+
+            fileReader.onerror = () => reject(fileReader.error);
+            fileReader.readAsArrayBuffer(arquivo);
+        });
+    }
+
+           function filtrarTodosProdutos(linhas) {
+        let itensFiltrados = [];
+        
+        // REGEX FOCADA: Captura o código e o texto, mas barra lixos grandes que tenham "EMAIL:" ou "DADOS"
+        const regexFocada = /(\d{4,6})\s+((?!.*(?:EMAIL|DADOS|ASSINATURA))[A-Z0-9\s\-X]+?(?:COLCHAO|BASE|ALMOFADA|ORTOBOM|FOGAO|ESMALTEC)[A-Z0-9\s\-X]+)/i;
+        const regexSimples = /(\d{4,6})\s+([A-Z]{4,}\s[A-Z\s0-9\-X]{15,})/g;
+
+        for (let linha of linhas) {
+            const limpa = linha.replace(/\s+/g, ' ').trim();
+            
+            // 1ª Tentativa: Regex Focada
+            const match = limpa.match(regexFocada);
+            if (match) {
+                const codigo = match[1];
+                let descricao = match[2].trim();
+                
+                // CORREÇÃO CRUCIAL: Passa a tesoura assim que acha a quantidade (ex: " 12,00" ou " 6,00")
+                descricao = descricao.split(/\s+\d+,\d{2}/)[0].trim();
+                
+                itensFiltrados.push(`${codigo} - ${descricao.toUpperCase()}`);
+                continue; 
+            }
+
+            // 2ª Tentativa: Plano B
+            let matchB;
+            regexSimples.lastIndex = 0; 
+            while ((matchB = regexSimples.exec(limpa)) !== null) {
+                let codigoB = matchB[1];
+                let textoLimpo = matchB[2].trim();
+                
+                // Aplica o mesmo corte da quantidade no plano B
+                textoLimpo = textoLimpo.split(/\s+\d+,\d{2}/)[0].trim();
+                
+                // Evita que falsos positivos entrem na lista
+                if (!textoLimpo.includes("EMAIL") && !textoLimpo.includes("ASSINATURA")) {
+                    itensFiltrados.push(`${codigoB} - ${textoLimpo.toUpperCase()}`);
+                }
+            }
+        }
+
+        montarMensagemFinal(itensFiltrados);
+    }
+
+
+
+    function montarMensagemFinal(itens) {
+        const divResultado = document.getElementById('resultado');
+        const spanContador = document.getElementById('qtd-itens');
+        const btnCopiar = document.getElementById('btn-copiar');
+
+        if (itens.length === 0) {
+            divResultado.innerText = "Nenhum item de estoque foi reconhecido na varredura dos PDFs.";
+            btnCopiar.style.display = 'none';
+            spanContador.innerText = "0 itens";
+            return;
+        }
+
+        // Remove duplicados exatos encontrados em ambos os PDFs
+        const listaFinalUnica = [...new Set(itens)];
+
+        const agora = new Date();
+        const hora = agora.getHours();
+        const saudacao = (hora >= 5 && hora < 12) ? "BOM DIA" : "BOA TARDE";
+
+        const opcoesData = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        let dataFormatada = agora.toLocaleDateString('pt-BR', opcoesData);
+
+        const horasFormatadas = String(agora.getHours()).padStart(2, '0');
+        const minutosFormatados = String(agora.getMinutes()).padStart(2, '0');
+        const horaFinal = `${horasFormatadas}:${minutosFormatados}`;
+
+        let message = `${saudacao}, CHEGOU NO DEPOSITO OS PRODUTOS ABAIXO, POR FAVOR ATUALIZEM OS PREÇO.\n\n`;
+        message += listaFinalUnica.join("\n") + "\n\n";
+        message += `Att: Lma Ferreira\n`;
+        message += `Russas-ce\n`;
+        message += `${dataFormatada} ${horaFinal}`;
+
+        divResultado.innerText = message;
+        spanContador.innerText = `${listaFinalUnica.length} itens formatados`;
+        btnCopiar.style.display = 'block';
+    }
+
+    document.getElementById('btn-copiar').addEventListener('click', function() {
+        const texto = document.getElementById('resultado').innerText;
+        navigator.clipboard.writeText(texto).then(() => {
+            const btn = document.getElementById('btn-copiar');
+            const textoOriginal = btn.innerText;
+            btn.innerText = "COPIADO COM SUCESSO!";
+            btn.style.backgroundColor = "#059669";
+            setTimeout(() => {
+                btn.innerText = textoOriginal;
+                btn.style.backgroundColor = "#10b981";
+            }, 2000);
+        }).catch(err => {
+            alert("Não foi possível copiar automaticamente. Selecione o texto da caixa e copie manualmente.");
+        });
+    });
+</script>

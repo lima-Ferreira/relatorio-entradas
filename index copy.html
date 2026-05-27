@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extrator de Itens de Estoque</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background-color: #f0f3f5;
+            padding: 30px;
+            margin: 0;
+        }
+        .container {
+            max-width: 750px;
+            margin: 0 auto;
+            background: #ffffff;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        }
+        h2 {
+            color: #1e293b;
+            margin-top: 0;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+        .file-input-wrapper {
+            margin: 20px 0;
+        }
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            background: #f8fafc;
+            box-sizing: border-box;
+        }
+        .btn-extrair {
+            width: 100%;
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-extrair:hover {
+            background-color: #1d4ed8;
+        }
+        .btn-extrair:disabled {
+            background-color: #94a3b8;
+            cursor: not-allowed;
+        }
+        .resultado-container {
+            margin-top: 25px;
+        }
+        .resultado-box {
+            background: #0f172a;
+            color: #38bdf8;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            max-height: 450px;
+            overflow-y: auto;
+            border: 1px solid #1e293b;
+        }
+        .status-msg {
+            font-weight: bold;
+            color: #64748b;
+            margin-bottom: 5px;
+        }
+        .contador {
+            float: right;
+            color: #10b981;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Extrator de Estoque - PDF</h2>
+    
+    <div class="file-input-wrapper">
+        <label class="status-msg" for="pdf-file">Selecione o PDF do Comprovante:</label>
+        <input type="file" id="pdf-file" accept=".pdf">
+    </div>
+
+    <button id="btn-processar" class="btn-extrair" disabled>EXTRAIR TODOS OS ITENS</button>
+
+    <div class="resultado-container">
+        <div class="status-msg">
+            Lista de Itens Extraídos:
+            <span id="qtd-itens" class="contador"></span>
+        </div>
+        <div id="resultado" class="resultado-box">Nenhum arquivo processado ainda.</div>
+    </div>
+</div>
+
+<script>
+    let arquivoCarregado = null;
+
+    // Gerencia o input de arquivo (Destrava o botão sem travar por segurança)
+    document.getElementById('pdf-file').addEventListener('change', function(e) {
+        const arquivos = e.target.files;
+        const btn = document.getElementById('btn-processar');
+        
+        if (arquivos.length > 0) {
+            arquivoCarregado = arquivos[0]; // Pega o arquivo de forma direta
+            btn.disabled = false; // DESTRAVA O BOTÃO NA HORA
+            document.getElementById('resultado').innerText = "Arquivo carregado! Clique acima para extrair.";
+        } else {
+            btn.disabled = true;
+            arquivoCarregado = null;
+        }
+    });
+
+    // Evento de clique para disparar o leitor nativo
+    document.getElementById('btn-processar').addEventListener('click', function() {
+        if (!arquivoCarregado) return;
+
+        const divResultado = document.getElementById('resultado');
+        divResultado.innerText = "Lendo blocos de texto nativos do arquivo...";
+        document.getElementById('qtd-itens').innerText = "";
+
+        const fileReader = new FileReader();
+        fileReader.onload = function() {
+            try {
+                const arrayBuffer = fileReader.result;
+                const decoder = new TextDecoder('latin1');
+                const textoCru = decoder.decode(arrayBuffer);
+                
+                // Extrai blocos de strings nativas contidas na estrutura do PDF
+                const regexTextos = /\(([^)]+)\)/g;
+                let matchTextos;
+                let linhasMontadas = [];
+                let blocoBuffer = "";
+
+                while ((matchTextos = regexTextos.exec(textoCru)) !== null) {
+                    let fragmento = matchTextos[1];
+                    // Ignora pequenos fragmentos de formatação e códigos soltos
+                    if (fragmento.length > 1) {
+                        blocoBuffer += fragmento + " ";
+                    }
+                    // Quando encontra o CFOP ou valores da tabela, quebra a linha do buffer
+                    if (fragmento.includes("1403") || fragmento.includes("60 50")) {
+                        linhasMontadas.push(blocoBuffer);
+                        blocoBuffer = "";
+                    }
+                }
+                // Adiciona o que sobrou se houver dados
+                if (blocoBuffer.trim()) linhasMontadas.push(blocoBuffer);
+
+                filtrarTodosProdutos(linhasMontadas);
+
+            } catch (error) {
+                divResultado.innerText = "Erro crítico ao acessar a memória do PDF.";
+                console.error(error);
+            }
+        };
+        
+        fileReader.readAsArrayBuffer(arquivoCarregado);
+    });
+
+    function filtrarTodosProdutos(linhas) {
+        let itensFiltrados = [];
+        
+        // Regex calibrada para pegar o código (4 a 6 dígitos) e toda a descrição de forma exata
+        const regexFocada = /(\d{4,6})\s+([A-Z0-9\s\-X]+?(?:COLCHAO|BASE|ALMOFADA|ORTOBOM)[A-Z0-9\s\-X]+)/i;
+
+        for (let linha of linhas) {
+            // Corrige espaçamentos do leitor de memória
+            const limpa = linha.replace(/\s+/g, ' ').trim();
+            const match = limpa.match(regexFocada);
+
+            if (match) {
+                const codigo = match[1];
+                let descricao = match[2].trim();
+                
+                // Remove ruídos numéricos do fim do texto da descrição se vazarem colunas fiscais
+                descricao = descricao.replace(/\s+\d+.*$/, '');
+
+                itensFiltrados.push(`${codigo} ${descricao.toUpperCase()}`);
+            }
+        }
+
+        const divResultado = document.getElementById('resultado');
+        const spanContador = document.getElementById('qtd-itens');
+
+        if (itensFiltrados.length > 0) {
+            // Remove duplicidades geradas por quebras de páginas
+            const listaFinalUnica = [...new Set(itensFiltrados)];
+            
+            divResultado.innerText = listaFinalUnica.join("\n");
+            spanContador.innerText = `${listaFinalUnica.length} itens extraídos`;
+        } else {
+            // Plano B: Pega qualquer padrão de código longo + palavras maiúsculas
+            let planoB = [];
+            const regexSimples = /(\d{4,6})\s+([A-Z]{4,}\s[A-Z\s0-9\-X]{15,})/g;
+            
+            for (let linha of linhas) {
+                let matchB;
+                while ((matchB = regexSimples.exec(linha)) !== null) {
+                    let textoLimpo = matchB[2].replace(/\s+\d+.*$/, '').trim();
+                    planoB.push(`${matchB[1]} ${textoLimpo.toUpperCase()}`);
+                }
+            }
+            
+            if (planoB.length > 0) {
+                const planoBUnico = [...new Set(planoB)];
+                divResultado.innerText = planoBUnico.join("\n");
+                spanContador.innerText = `${planoBUnico.length} itens extraídos`;
+            } else {
+                divResultado.innerText = "Nenhum item de estoque foi reconhecido na varredura. Certifique-se de que selecionou o PDF legível.";
+            }
+        }
+    }
+</script>
+
+</body>
+</html>
