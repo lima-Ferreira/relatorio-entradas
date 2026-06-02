@@ -170,91 +170,87 @@
     });
 
     function processarArquivo(arquivo) {
-        return new Promise((resolve, reject) => {
-            const fileReader = new FileReader();
+    return new Promise((resolve, reject) => {
+        const fileReader = new FileReader();
 
-            fileReader.onload = function() {
-                try {
-                    const arrayBuffer = fileReader.result;
-                    const decoder = new TextDecoder('latin1');
-                    const textoCru = decoder.decode(arrayBuffer);
+        fileReader.onload = function() {
+            try {
+                const arrayBuffer = fileReader.result;
+                const decoder = new TextDecoder('latin1');
+                const textoCru = decoder.decode(arrayBuffer);
 
-                    const regexTextos = /\(([^)]+)\)/g;
-                    let matchTextos;
-                    let linhasMontadas = [];
-                    let blocoBuffer = ""; // Resetado estritamente a cada novo arquivo carregado
+                const regexTextos = /\(([^)]+)\)/g;
+                let matchTextos;
+                let linhasMontadas = [];
+                let blocoBuffer = ""; 
 
-                    while ((matchTextos = regexTextos.exec(textoCru)) !== null) {
-                        let fragmento = matchTextos[1];
+                while ((matchTextos = regexTextos.exec(textoCru)) !== null) {
+                    let fragmento = matchTextos[1]; 
 
-                        if (fragmento.length > 1) {
-                            blocoBuffer += fragmento + " ";
-                        }
-
-                        if (fragmento.includes("1403") || fragmento.includes("60 50")) {
-                            linhasMontadas.push(blocoBuffer);
+                    if (fragmento.length > 0) {
+                        // DETECTOR DE CÓDIGO: Se achar um número isolado de 4 a 6 dígitos,
+                        // fecha a linha do produto anterior e começa a nova.
+                        if (/^\d{4,6}$/.test(fragmento.trim()) && blocoBuffer.trim().length > 0) {
+                            linhasMontadas.push(blocoBuffer.trim());
                             blocoBuffer = "";
                         }
+                        // Junta os pedaços de texto garantindo que a cor com barra (/) não seja cortada
+                        blocoBuffer += fragmento + " ";
                     }
-
-                    if (blocoBuffer.trim()) {
-                        linhasMontadas.push(blocoBuffer);
-                    }
-
-                    resolve(linhasMontadas);
-                } catch (erro) {
-                    reject(erro);
                 }
-            };
 
-            fileReader.onerror = () => reject(fileReader.error);
-            fileReader.readAsArrayBuffer(arquivo);
-        });
-    }
+                if (blocoBuffer.trim()) {
+                    linhasMontadas.push(blocoBuffer.trim());
+                }
 
-           function filtrarTodosProdutos(linhas) {
-        let itensFiltrados = [];
-        
-        // REGEX FOCADA: Captura o código e o texto, mas barra lixos grandes que tenham "EMAIL:" ou "DADOS"
-        const regexFocada = /(\d{4,6})\s+((?!.*(?:EMAIL|DADOS|ASSINATURA))[A-Z0-9\s\-X]+?(?:COLCHAO|BASE|ALMOFADA|ORTOBOM|FOGAO|ESMALTEC)[A-Z0-9\s\-X]+)/i;
-        const regexSimples = /(\d{4,6})\s+([A-Z]{4,}\s[A-Z\s0-9\-X]{15,})/g;
-
-        for (let linha of linhas) {
-            const limpa = linha.replace(/\s+/g, ' ').trim();
-            
-            // 1ª Tentativa: Regex Focada
-            const match = limpa.match(regexFocada);
-            if (match) {
-                const codigo = match[1];
-                let descricao = match[2].trim();
-                
-                // CORREÇÃO CRUCIAL: Passa a tesoura assim que acha a quantidade (ex: " 12,00" ou " 6,00")
-                descricao = descricao.split(/\s+\d+,\d{2}/)[0].trim();
-                
-                itensFiltrados.push(`${codigo} - ${descricao.toUpperCase()}`);
-                continue; 
+                resolve(linhasMontadas);
+            } catch (erro) {
+                reject(erro);
             }
+        };
 
-            // 2ª Tentativa: Plano B
-            let matchB;
-            regexSimples.lastIndex = 0; 
-            while ((matchB = regexSimples.exec(limpa)) !== null) {
-                let codigoB = matchB[1];
-                let textoLimpo = matchB[2].trim();
-                
-                // Aplica o mesmo corte da quantidade no plano B
-                textoLimpo = textoLimpo.split(/\s+\d+,\d{2}/)[0].trim();
-                
-                // Evita que falsos positivos entrem na lista
-                if (!textoLimpo.includes("EMAIL") && !textoLimpo.includes("ASSINATURA")) {
-                    itensFiltrados.push(`${codigoB} - ${textoLimpo.toUpperCase()}`);
-                }
+        fileReader.onerror = () => reject(fileReader.error);
+        fileReader.readAsArrayBuffer(arquivo);
+    });
+}
+
+function filtrarTodosProdutos(linhas) {
+    let itensFiltrados = [];
+    
+    // REGEX BLINDADA: Captura o código e aceita absolutamente tudo na descrição (letras, números, barras, espaços e traços)
+    const regexUniversal = /^(\d{4,6})\s+((?!.*(?:EMAIL|DADOS|ASSINATURA|COMPROVANTE|ENDERECO|LOJA))[A-Z0-9\s\-\/\+]+)/i;
+
+    for (let linha of linhas) {
+        const limpa = linha.replace(/\s+/g, ' ').trim();
+        
+        const match = limpa.match(regexUniversal);
+        if (match) {
+            const codigo = match[1];
+            let descricao = match[2].trim();
+            
+            // SOLUÇÃO DA COR: O CFOP "2403" ou "1403" fica logo após a cor do produto.
+            // Cortamos tudo que estiver depois desse número fiscal, mantendo a cor intacta!
+            if (descricao.includes(" 2403 ")) {
+                descricao = descricao.split(/\s+2403/)[0].trim();
+            } else if (descricao.includes(" 1403 ")) {
+                descricao = descricao.split(/\s+1403/)[0].trim();
+            }
+            
+            // Remove resíduos numéricos de quantidades que possam ter sobrado no final (ex: " 5", " 12")
+            descricao = descricao.replace(/\s+\d+\s+\d+,\d{2}$/, '').trim();
+            descricao = descricao.replace(/\s+\d+$/, '').trim();
+            
+            // Remove cabeçalhos e garante que só pegue descrições reais com tamanho mínimo
+            if (descricao.length >= 12 && !descricao.includes("PRODUTO") && !descricao.includes("NUMERO") && !descricao.includes("VALOR")) {
+                itensFiltrados.push(`${codigo} - ${descricao.toUpperCase()}`);
             }
         }
-
-        montarMensagemFinal(itensFiltrados);
     }
 
+    montarMensagemFinal(itensFiltrados);
+}
+
+          
 
 
     function montarMensagemFinal(itens) {
