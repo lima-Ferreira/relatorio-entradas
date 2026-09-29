@@ -5,99 +5,109 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Extrator Multarquivos de Estoque</title>
     <style>
+        * { box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
-            background-color: #f0f3f5;
-            padding: 30px;
+            background: #eef2f7;
+            padding: 36px 18px;
             margin: 0;
+            color: #1e293b;
         }
         .container {
-            max-width: 750px;
+            max-width: 820px;
             margin: 0 auto;
             background: #ffffff;
-            padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            padding: 28px;
+            border-radius: 16px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 12px 35px rgba(15, 23, 42, 0.08);
         }
         h2 {
-            color: #1e293b;
-            margin-top: 0;
-            border-bottom: 2px solid #e2e8f0;
-            padding-bottom: 10px;
+            color: #172033;
+            margin: 0 0 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 24px;
+            letter-spacing: -0.3px;
         }
         .file-input-wrapper {
-            margin: 20px 0;
+            margin: 0 0 14px;
+            padding: 16px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
         }
+        .file-input-wrapper label { display: block; margin-bottom: 9px; }
         input[type="file"] {
             width: 100%;
-            padding: 10px;
+            padding: 9px;
             border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            background: #ffffff;
+            font: inherit;
+            color: #334155;
+        }
+        input[type="file"]::file-selector-button {
+            border: 0;
+            background: #e8eef9;
+            color: #1e3a8a;
+            font-weight: 700;
+            padding: 8px 12px;
             border-radius: 6px;
-            background: #f8fafc;
-            box-sizing: border-box;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        .btn-extrair, .btn-copiar {
+            width: 100%;
+            color: white;
+            border: none;
+            font-weight: 700;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform .15s ease, filter .15s ease;
         }
         .btn-extrair {
-            width: 100%;
-            background-color: #2563eb;
-            color: white;
-            border: none;
-            padding: 14px;
-            font-size: 16px;
-            font-weight: bold;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background 0.2s;
-            margin-bottom: 10px;
+            background: #2563eb;
+            padding: 13px;
+            font-size: 15px;
+            margin-bottom: 4px;
         }
-        .btn-extrair:hover {
-            background-color: #1d4ed8;
-        }
-        .btn-extrair:disabled {
-            background-color: #94a3b8;
-            cursor: not-allowed;
-        }
+        .btn-extrair:hover, .btn-copiar:hover { filter: brightness(.94); }
+        .btn-extrair:active, .btn-copiar:active { transform: translateY(1px); }
+        .btn-extrair:disabled { background: #94a3b8; cursor: not-allowed; }
         .btn-copiar {
-            width: 100%;
-            background-color: #10b981;
-            color: white;
-            border: none;
-            padding: 10px;
+            background: #10b981;
+            padding: 11px;
             font-size: 14px;
-            font-weight: bold;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background 0.2s;
             margin-top: 10px;
             display: none;
         }
-        .btn-copiar:hover {
-            background-color: #059669;
-        }
-        .resultado-container {
-            margin-top: 25px;
-        }
+        .resultado-container { margin-top: 20px; }
         .resultado-box {
             background: #0f172a;
             color: #38bdf8;
-            padding: 20px;
-            border-radius: 6px;
+            padding: 18px;
+            border-radius: 9px;
             font-family: 'Consolas', 'Courier New', monospace;
-            font-size: 15px;
+            font-size: 14px;
             white-space: pre-wrap;
             max-height: 500px;
             overflow-y: auto;
             border: 1px solid #1e293b;
-            line-height: 1.5;
+            line-height: 1.42;
         }
         .status-msg {
-            font-weight: bold;
-            color: #64748b;
-            margin-bottom: 5px;
-        }
-        .contador {
-            float: right;
-            color: #10b981;
+            font-weight: 700;
+            color: #52647a;
+            margin-bottom: 7px;
             font-size: 14px;
+        }
+        .contador { float: right; color: #059669; font-size: 13px; }
+        @media (max-width: 600px) {
+            body { padding: 14px; }
+            .container { padding: 18px; border-radius: 12px; }
+            h2 { font-size: 20px; }
+            .contador { float: none; display: block; margin-top: 4px; }
         }
     </style>
 </head>
@@ -123,7 +133,12 @@
     </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
+    if (window.pdfjsLib) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    }
+
     // Correção: Declarando a variável global corretamente
     let arquivosCarregados = [];
 
@@ -146,147 +161,200 @@
 
         const divResultado = document.getElementById('resultado');
         const spanContador = document.getElementById('qtd-itens');
-
         divResultado.innerText = "Processando PDFs...";
         spanContador.innerText = "";
 
-        let todasAsLinhas = [];
+        const gruposPorPdf = [];
 
         for (let i = 0; i < arquivosCarregados.length; i++) {
             const arquivo = arquivosCarregados[i];
             divResultado.innerText = `Processando ${i + 1} de ${arquivosCarregados.length}: ${arquivo.name}`;
 
             try {
-                const linhasArquivo = await processarArquivo(arquivo);
-                // Junta as linhas de TODOS os arquivos na mesma lista global
-                todasAsLinhas = todasAsLinhas.concat(linhasArquivo);
+                // PRIMEIRA TENTATIVA: motor ORIGINAL do projeto. Ele continua sendo a prioridade.
+                const linhasOriginais = await processarArquivoOriginal(arquivo);
+                let itens = filtrarTodosProdutos(linhasOriginais);
+
+                // SEGUNDA TENTATIVA: só entra quando o motor original não encontrou produto algum.
+                // Isso evita alterar o comportamento dos comprovantes que já funcionavam.
+                if (itens.length === 0 && window.pdfjsLib) {
+                    const linhasPdfJs = await processarArquivoPdfJs(arquivo);
+                    itens = filtrarProdutosDanfe(linhasPdfJs);
+                }
+
+                gruposPorPdf.push(itens);
             } catch (erro) {
                 console.error("Erro ao processar o arquivo: " + arquivo.name, erro);
+                gruposPorPdf.push([]);
             }
         }
 
-        // Processa todas as linhas acumuladas de todos os PDFs juntos
-        filtrarTodosProdutos(todasAsLinhas);
+        montarMensagemFinal(gruposPorPdf);
     });
 
-    function processarArquivo(arquivo) {
-    return new Promise((resolve, reject) => {
-        const fileReader = new FileReader();
+    // Motor original preservado.
+    function processarArquivoOriginal(arquivo) {
+        return new Promise((resolve, reject) => {
+            const fileReader = new FileReader();
+            fileReader.onload = function() {
+                try {
+                    const arrayBuffer = fileReader.result;
+                    const decoder = new TextDecoder('latin1');
+                    const textoCru = decoder.decode(arrayBuffer);
+                    const regexTextos = /\(([^)]+)\)/g;
+                    let matchTextos;
+                    let linhasMontadas = [];
+                    let blocoBuffer = "";
 
-        fileReader.onload = function() {
-            try {
-                const arrayBuffer = fileReader.result;
-                const decoder = new TextDecoder('latin1');
-                const textoCru = decoder.decode(arrayBuffer);
-
-                const regexTextos = /\(([^)]+)\)/g;
-                let matchTextos;
-                let linhasMontadas = [];
-                let blocoBuffer = ""; 
-
-                while ((matchTextos = regexTextos.exec(textoCru)) !== null) {
-                    let fragmento = matchTextos[1]; 
-
-                    if (fragmento.length > 0) {
-                        // DETECTOR DE CÓDIGO: Se achar um número isolado de 4 a 6 dígitos,
-                        // fecha a linha do produto anterior e começa a nova.
-                        if (/^\d{4,6}$/.test(fragmento.trim()) && blocoBuffer.trim().length > 0) {
-                            linhasMontadas.push(blocoBuffer.trim());
-                            blocoBuffer = "";
+                    while ((matchTextos = regexTextos.exec(textoCru)) !== null) {
+                        let fragmento = matchTextos[1];
+                        if (fragmento.length > 0) {
+                            if (/^\d{4,6}$/.test(fragmento.trim()) && blocoBuffer.trim().length > 0) {
+                                linhasMontadas.push(blocoBuffer.trim());
+                                blocoBuffer = "";
+                            }
+                            blocoBuffer += fragmento + " ";
                         }
-                        // Junta os pedaços de texto garantindo que a cor com barra (/) não seja cortada
-                        blocoBuffer += fragmento + " ";
                     }
-                }
-
-                if (blocoBuffer.trim()) {
-                    linhasMontadas.push(blocoBuffer.trim());
-                }
-
-                resolve(linhasMontadas);
-            } catch (erro) {
-                reject(erro);
-            }
-        };
-
-        fileReader.onerror = () => reject(fileReader.error);
-        fileReader.readAsArrayBuffer(arquivo);
-    });
-}
-
-function filtrarTodosProdutos(linhas) {
-    let itensFiltrados = [];
-    
-    // REGEX BLINDADA: Captura o código e aceita absolutamente tudo na descrição (letras, números, barras, espaços e traços)
-    const regexUniversal = /^(\d{4,6})\s+((?!.*(?:EMAIL|DADOS|ASSINATURA|COMPROVANTE|ENDERECO|LOJA))[A-Z0-9\s\-\/\+]+)/i;
-
-    for (let linha of linhas) {
-        const limpa = linha.replace(/\s+/g, ' ').trim();
-        
-        const match = limpa.match(regexUniversal);
-        if (match) {
-            const codigo = match[1];
-            let descricao = match[2].trim();
-            
-            // SOLUÇÃO DA COR: O CFOP "2403" ou "1403" fica logo após a cor do produto.
-            // Cortamos tudo que estiver depois desse número fiscal, mantendo a cor intacta!
-            if (descricao.includes(" 2403 ")) {
-                descricao = descricao.split(/\s+2403/)[0].trim();
-            } else if (descricao.includes(" 1403 ")) {
-                descricao = descricao.split(/\s+1403/)[0].trim();
-            }
-            
-            // Remove resíduos numéricos de quantidades que possam ter sobrado no final (ex: " 5", " 12")
-            descricao = descricao.replace(/\s+\d+\s+\d+,\d{2}$/, '').trim();
-            descricao = descricao.replace(/\s+\d+$/, '').trim();
-            
-            // Remove cabeçalhos e garante que só pegue descrições reais com tamanho mínimo
-            if (descricao.length >= 12 && !descricao.includes("PRODUTO") && !descricao.includes("NUMERO") && !descricao.includes("VALOR")) {
-                itensFiltrados.push(`${codigo} - ${descricao.toUpperCase()}`);
-            }
-        }
+                    if (blocoBuffer.trim()) linhasMontadas.push(blocoBuffer.trim());
+                    resolve(linhasMontadas);
+                } catch (erro) { reject(erro); }
+            };
+            fileReader.onerror = () => reject(fileReader.error);
+            fileReader.readAsArrayBuffer(arquivo);
+        });
     }
 
-    montarMensagemFinal(itensFiltrados);
-}
+    // Leitor complementar para DANFEs/arquivos cujo texto interno não segue o padrão antigo.
+    async function processarArquivoPdfJs(arquivo) {
+        const dados = new Uint8Array(await arquivo.arrayBuffer());
+        const pdf = await pdfjsLib.getDocument({ data: dados }).promise;
+        const linhas = [];
 
-          
+        for (let p = 1; p <= pdf.numPages; p++) {
+            const pagina = await pdf.getPage(p);
+            const conteudo = await pagina.getTextContent();
+            const itens = conteudo.items
+                .filter(x => x.str && x.str.trim())
+                .map(x => ({ texto: x.str.trim(), x: x.transform[4], y: x.transform[5] }));
 
+            // Agrupa fragmentos que estão visualmente na mesma linha.
+            const grupos = [];
+            for (const item of itens) {
+                let grupo = grupos.find(g => Math.abs(g.y - item.y) <= 2.5);
+                if (!grupo) { grupo = { y: item.y, itens: [] }; grupos.push(grupo); }
+                grupo.itens.push(item);
+            }
+            grupos.sort((a,b) => b.y - a.y);
+            for (const g of grupos) {
+                g.itens.sort((a,b) => a.x - b.x);
+                linhas.push(g.itens.map(i => i.texto).join(' ').replace(/\s+/g,' ').trim());
+            }
+        }
+        return linhas;
+    }
 
-    function montarMensagemFinal(itens) {
+    // Filtro ORIGINAL, agora retorna os itens em vez de montar a mensagem imediatamente.
+    function filtrarTodosProdutos(linhas) {
+        let itensFiltrados = [];
+        const regexUniversal = /^(\d{4,6})\s+((?!.*(?:EMAIL|DADOS|ASSINATURA|COMPROVANTE|ENDERECO|LOJA))[A-Z0-9\s\-\/\+]+)/i;
+
+        for (let linha of linhas) {
+            const limpa = linha.replace(/\s+/g, ' ').trim();
+            const match = limpa.match(regexUniversal);
+            if (match) {
+                const codigo = match[1];
+                let descricao = match[2].trim();
+                if (descricao.includes(" 2403 ")) descricao = descricao.split(/\s+2403/)[0].trim();
+                else if (descricao.includes(" 1403 ")) descricao = descricao.split(/\s+1403/)[0].trim();
+                descricao = descricao.replace(/\s+\d+\s+\d+,\d{2}$/, '').trim();
+                descricao = descricao.replace(/\s+\d+$/, '').trim();
+                if (descricao.length >= 12 && !descricao.includes("PRODUTO") && !descricao.includes("NUMERO") && !descricao.includes("VALOR")) {
+                    itensFiltrados.push(`${codigo} - ${descricao.toUpperCase()}`);
+                }
+            }
+        }
+        return [...new Set(itensFiltrados)];
+    }
+
+    // Reconhece somente linhas da tabela de produtos de DANFE.
+    // Não aceita chave de acesso, cabeçalhos, número da entrada, NF ou valores fiscais.
+    function filtrarProdutosDanfe(linhas) {
+        const resultado = [];
+        let dentroProdutos = false;
+        let pendente = null;
+
+        const ehCabecalhoFim = t => /DADOS ADICIONAIS|INFORMAÇÕES COMPLEMENTARES|RESERVADO AO FISCO/i.test(t);
+        const ehLinhaFiscal = t => /\b\d{8}\b.*\b(?:5101|5102|5405|6101|6102|6403|6404)\b/i.test(t);
+        const ehCodigoProduto = t => /^([A-Z0-9]{4,12})\s+(.{8,})$/i.test(t) && /[A-Z]/i.test(t.replace(/^\S+\s+/, ''));
+
+        for (const linha0 of linhas) {
+            const linha = linha0.replace(/\s+/g,' ').trim();
+            if (/DADOS DOS PRODUTOS\s*\/\s*SERVIÇOS/i.test(linha)) { dentroProdutos = true; continue; }
+            if (!dentroProdutos) continue;
+            if (ehCabecalhoFim(linha)) break;
+
+            const m = linha.match(/^([A-Z0-9]{4,12})\s+(.{8,})$/i);
+            if (m && ehCodigoProduto(linha) && !/^\d{44}$/.test(m[1])) {
+                // Evita linhas fiscais: produto começa por código + descrição textual, não por chave/NF/data.
+                if (!/^(?:NCM|CFOP|QUANT|VALOR|TOTAL|BASE|ICMS|IPI)$/i.test(m[1])) {
+                    if (pendente) resultado.push(`${pendente.codigo} - ${pendente.descricao.toUpperCase()}`);
+                    pendente = { codigo: m[1], descricao: m[2] };
+                }
+                continue;
+            }
+
+            if (pendente) {
+                if (ehLinhaFiscal(linha) || /^\d{8}\s+\d{3}\s+\d{4}\b/.test(linha)) {
+                    resultado.push(`${pendente.codigo} - ${pendente.descricao.toUpperCase()}`);
+                    pendente = null;
+                } else if (/^[A-Z0-9][A-Z0-9\/\-]{1,20}$/i.test(linha)) {
+                    // Cor/acabamento em linha separada, ex.: JTB/GRA ou CNM/ARE.
+                    pendente.descricao += ` ${linha}`;
+                }
+            }
+        }
+        if (pendente) resultado.push(`${pendente.codigo} - ${pendente.descricao.toUpperCase()}`);
+        return [...new Set(resultado)];
+    }
+
+    function montarMensagemFinal(grupos) {
         const divResultado = document.getElementById('resultado');
         const spanContador = document.getElementById('qtd-itens');
         const btnCopiar = document.getElementById('btn-copiar');
 
-        if (itens.length === 0) {
+        // Mantém a regra antiga de não repetir produto, mas preserva a origem por PDF.
+        const vistos = new Set();
+        const gruposLimpos = [];
+        for (const grupo of grupos) {
+            const unicosDestePdf = [];
+            for (const item of grupo) {
+                if (!vistos.has(item)) { vistos.add(item); unicosDestePdf.push(item); }
+            }
+            if (unicosDestePdf.length) gruposLimpos.push(unicosDestePdf);
+        }
+
+        const total = [...vistos].length;
+        if (total === 0) {
             divResultado.innerText = "Nenhum item de estoque foi reconhecido na varredura dos PDFs.";
             btnCopiar.style.display = 'none';
             spanContador.innerText = "0 itens";
             return;
         }
 
-        // Remove duplicados exatos encontrados em ambos os PDFs
-        const listaFinalUnica = [...new Set(itens)];
-
         const agora = new Date();
         const hora = agora.getHours();
         const saudacao = (hora >= 5 && hora < 12) ? "BOM DIA" : "BOA TARDE";
-
         const opcoesData = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-        let dataFormatada = agora.toLocaleDateString('pt-BR', opcoesData);
-
-        const horasFormatadas = String(agora.getHours()).padStart(2, '0');
-        const minutosFormatados = String(agora.getMinutes()).padStart(2, '0');
-        const horaFinal = `${horasFormatadas}:${minutosFormatados}`;
+        const dataFormatada = agora.toLocaleDateString('pt-BR', opcoesData);
+        const horaFinal = `${String(agora.getHours()).padStart(2,'0')}:${String(agora.getMinutes()).padStart(2,'0')}`;
 
         let message = `${saudacao}, CHEGOU NO DEPOSITO OS PRODUTOS ABAIXO, POR FAVOR ATUALIZEM OS PREÇO.\n\n`;
-        message += listaFinalUnica.join("\n") + "\n\n";
-        message += `Att: Lma Ferreira\n`;
-        message += `Russas-ce\n`;
-        message += `${dataFormatada} ${horaFinal}`;
+        message += gruposLimpos.map(g => g.join("\n")).join("\n----------------------------------------\n") + "\n\n";
+        message += `Att: Lma Ferreira\nRussas-ce\n${dataFormatada} ${horaFinal}`;
 
         divResultado.innerText = message;
-        spanContador.innerText = `${listaFinalUnica.length} itens formatados`;
+        spanContador.innerText = `${total} itens formatados`;
         btnCopiar.style.display = 'block';
     }
 
