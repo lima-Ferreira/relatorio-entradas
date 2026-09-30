@@ -180,6 +180,13 @@
                 if (itens.length === 0 && window.pdfjsLib) {
                     const linhasPdfJs = await processarArquivoPdfJs(arquivo);
                     itens = filtrarProdutosDanfe(linhasPdfJs);
+
+                    // TERCEIRA TENTATIVA: comprovantes de entrada gerados pela INFO.
+                    // Alguns PDFs visualmente iguais armazenam a tabela em outra ordem interna.
+                    // Nesses casos o PDF.js enxerga o texto, mas o filtro de DANFE não se aplica.
+                    if (itens.length === 0) {
+                        itens = filtrarProdutosComprovanteEntrada(linhasPdfJs);
+                    }
                 }
 
                 gruposPorPdf.push(itens);
@@ -315,6 +322,34 @@
             }
         }
         if (pendente) resultado.push(`${pendente.codigo} - ${pendente.descricao.toUpperCase()}`);
+        return [...new Set(resultado)];
+    }
+
+    // Fallback específico para o COMPROVANTE DE ENTRADA DE ESTOQUE FISCAL.
+    // Exemplo de linha: 30077 TV SAMSUNG ... 2403 0 50 50 10,00 1.897,47 18.974,70
+    // Captura somente código + descrição e ignora CFOP, impostos, quantidade e valores.
+    function filtrarProdutosComprovanteEntrada(linhas) {
+        const resultado = [];
+        const ignorar = /^(?:PAG|FONE|NUMERO|NÚMERO|DATA|TOTAL|QUANTIDADE|FORNECEDOR|CODIGO|CÓDIGO|LOJA|CFOP|VR\.|DADOS|OBSERVAÇÕES|ASSINATURA)/i;
+
+        for (const linha0 of linhas) {
+            const linha = linha0.replace(/\s+/g, ' ').trim();
+            if (!linha || ignorar.test(linha)) continue;
+
+            // O CFOP é a âncora entre a descrição e os campos numéricos da tabela.
+            // Aceita códigos de produto de 4 a 8 dígitos e CFOP de 4 dígitos.
+            const m = linha.match(/^(\d{4,8})\s+(.+?)\s+([1-7]\d{3})\s+(?:\d+(?:[.,]\d+)?\s+){2,}/i);
+            if (!m) continue;
+
+            const codigo = m[1];
+            let descricao = m[2].trim();
+
+            // Segurança contra números administrativos/fiscais confundidos com produto.
+            if (descricao.length < 5 || !/[A-Za-zÀ-ÿ]/.test(descricao)) continue;
+            if (/^(?:BAIXADO|FUJIOKA|PHILCO|SANTOS|LOJAS?)\s*$/i.test(descricao)) continue;
+
+            resultado.push(`${codigo} - ${descricao.toUpperCase()}`);
+        }
         return [...new Set(resultado)];
     }
 
